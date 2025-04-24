@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import supabase from "@/lib/supabase";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Table,
@@ -97,19 +98,44 @@ const ProductList = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
+    const fetchProducts = async (isRefresh = false) => {
+        if (isRefresh) {
+            setRefreshing(true);
+        } else {
+            setLoading(true);
+        }
+        setError(null);
+
+        try {
+            // Simulação de busca de dados
+            // Em uma implementação real, você buscaria dados do Supabase aqui
+            // const { data, error } = await supabase
+            //   .from('products')
+            //   .select('*')
+            //   .order('created_at', { ascending: false });
+            //
+            // if (error) throw error;
+            // if (data) setProducts(data);
+
+            // Simulando um atraso de rede
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            // Como estamos usando dados mockados, apenas resetamos para os dados originais
+            setProducts(mockProducts);
+        } catch (err) {
+            setError("Erro ao carregar produtos. Por favor, tente novamente.");
+            console.error(err);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
   useEffect(() => {
-    // Simulação de busca de dados
-    // const fetchProducts = async () => {
-    //   const { data, error } = await supabase
-    //     .from('products')
-    //     .select('*')
-    //     .order('created_at', { ascending: false });
-    //
-    //   if (data) setProducts(data);
-    // };
-    //
-    // fetchProducts();
+      fetchProducts();
   }, []);
 
   // Filtragem de produtos - busca em múltiplos campos
@@ -217,14 +243,39 @@ const ProductList = () => {
               </Select>
             </div>
             <Button
+              onClick={() => fetchProducts(true)}
+              variant="outline"
+              disabled={refreshing}
+              className="whitespace-nowrap mr-2"
+            >
+              {refreshing ? "Atualizando..." : "Atualizar"}
+            </Button>
+            <Button
               onClick={() => navigate("/products/new")}
               className="whitespace-nowrap"
             >
               Novo Produto
             </Button>
           </div>
+                  {error && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                          {error}
+                          <Button
+                              variant="link"
+                              className="ml-2 text-red-700 underline"
+                              onClick={() => fetchProducts()}
+                          >
+                              Tentar novamente
+                          </Button>
+                      </div>
+                  )}
 
-          {currentItems.length > 0 ? (
+                  {loading ? (
+                      <div className="text-center py-8 border rounded-md">
+                          <p className="text-muted-foreground">Carregando produtos...</p>
+                      </div>
+                  ) : currentItems.length > 0 ? (
+          
             <div className="border rounded-md">
               <Table>
                 <TableHeader>
@@ -268,9 +319,7 @@ const ProductList = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() =>
-                              navigate(`/product-detail/${product.id}`)
-                            }
+                            onClick={() => navigate(`/products/${product.id}`)}
                             title="Visualizar"
                           >
                             <Eye className="h-4 w-4" />
@@ -279,7 +328,7 @@ const ProductList = () => {
                             variant="ghost"
                             size="icon"
                             onClick={() =>
-                              navigate(`/product-form?id=${product.id}`)
+                                navigate(`/products/${product.id}?edit=true`)
                             }
                             title="Editar"
                           >
@@ -332,7 +381,7 @@ const ProductList = () => {
             <div className="text-center py-8 border rounded-md">
               <p className="text-muted-foreground">
                 Nenhum produto encontrado. Tente ajustar os filtros ou{" "}
-                <Link to="/product-form" className="text-primary underline">
+                <Link to="/products/new" className="text-primary underline">
                   cadastre um novo produto
                 </Link>
                 .

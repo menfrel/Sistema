@@ -22,6 +22,7 @@ import {
   Truck,
   FileText,
   Save,
+  X,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -34,6 +35,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import supabase from "../lib/supabase";
 
 const mockProducts = [
   {
@@ -112,6 +115,7 @@ const ProductDetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProduct, setEditedProduct] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -137,6 +141,48 @@ const ProductDetail = () => {
     navigate("/products");
   };
 
+  const fetchProductData = async () => {
+    setLoading(true);
+    try {
+      // Primeiro tenta buscar do Supabase
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        setProduct(data);
+        setEditedProduct(data);
+      } else {
+        // Fallback para dados mockados se não encontrar no Supabase
+        const foundProduct = mockProducts.find((p) => p.id === id);
+        if (foundProduct) {
+          setProduct(foundProduct);
+          setEditedProduct(foundProduct);
+        } else {
+          setError("Produto não encontrado");
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar produto:", err);
+      // Fallback para dados mockados em caso de erro
+      const foundProduct = mockProducts.find((p) => p.id === id);
+      if (foundProduct) {
+        setProduct(foundProduct);
+        setEditedProduct(foundProduct);
+      } else {
+        setError("Produto não encontrado");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveChanges = async () => {
     if (!editedProduct) return;
 
@@ -149,7 +195,8 @@ const ProductDetail = () => {
         ingredients: editedProduct.ingredients,
         manufacturer: editedProduct.manufacturer,
         location: editedProduct.location,
-        // fair: editedProduct.fair, // Removido pois a coluna não existe no banco
+        fair: editedProduct.fair, 
+        seals: editedProduct.seals,
         variations: editedProduct.variations,
         observations: editedProduct.observations,
       };
@@ -171,6 +218,7 @@ const ProductDetail = () => {
 
       setProduct({ ...editedProduct, seals: productToUpdate.seals });
       setIsEditing(false);
+      fetchProductData();
     } catch (error: any) {
       console.error("Erro ao atualizar produto:", error);
       alert(`Erro ao atualizar produto: ${error.message || "Tente novamente"}`);
@@ -221,7 +269,26 @@ const ProductDetail = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 bg-background">
+      <div className="container mx-auto p-6 bg-background">
+          <Dialog
+              open={!!selectedImage}
+              onOpenChange={(open) => !open && setSelectedImage(null)}
+          >
+              <DialogContent className="max-w-4xl w-full p-1">
+                  <div className="relative">
+                      <DialogClose className="absolute top-2 right-2 z-10 bg-background/80 p-2 rounded-full">
+                          <X className="h-4 w-4" />
+                      </DialogClose>
+                      {selectedImage && (
+                          <img
+                              src={selectedImage}
+                              alt="Imagem ampliada"
+                              className="w-full h-auto max-h-[80vh] object-contain"
+                          />
+                      )}
+                  </div>
+              </DialogContent>
+          </Dialog>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
           <Button
@@ -232,9 +299,42 @@ const ProductDetail = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
+          <Button
+          onClick={() => {
+            setLoading(true);
+            const fetchProduct = async () => {
+              try {
+                const { data, error } = await supabase
+                  .from("products")
+                  .select("*")
+                  .eq("id", id)
+                  .single();
+                if (error) throw error;
+                if (data) {
+                  setProduct({ ...product, ...data });
+                  setEditedProduct({ ...product, ...data });
+                }
+              } catch (error) {
+                console.error("Erro ao atualizar produto:", error);
+              } finally {
+                setLoading(false);
+              }
+            };
+            fetchProduct();
+          }}
+          variant="outline"
+        >
+          Atualizar Dados
+        </Button>
           <h1 className="text-2xl font-bold">Detalhes do Produto</h1>
         </div>
         <div className="flex space-x-2">
+        <Button
+            variant="outline"
+            onClick={fetchProductData}
+            disabled={loading}  >
+            {loading ? "Atualizando..." : "Atualizar"}
+          </Button>
           <Button variant="outline" onClick={() => setIsEditing(true)}>
             <Pencil className="h-4 w-4 mr-2" />
             Editar
@@ -279,13 +379,17 @@ const ProductDetail = () => {
                 {product.images.map((image: string, index: number) => (
                   <div
                     key={index}
-                    className="rounded-md overflow-hidden border"
+                        className="rounded-md overflow-hidden border cursor-pointer"
+                        onClick={() => setSelectedImage(image)}
                   >
                     <img
                       src={image}
                       alt={`${product.title} - Imagem ${index + 1}`}
                       className="w-full h-auto object-cover"
                     />
+                        <div className="p-1 text-center text-xs text-muted-foreground">
+                            Clique para ampliar
+                        </div>
                   </div>
                 ))}
               </div>

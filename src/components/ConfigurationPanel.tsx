@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import supabase from "@/lib/supabase";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -61,6 +62,7 @@ interface Field {
 }
 
 interface DatabaseConfig {
+  [x: string]: string | number | readonly string[];
   tableName: string;
   schema: string;
   connectionString: string;
@@ -140,6 +142,11 @@ const ConfigurationPanel = () => {
     allowedTypes: ["image/jpeg", "image/png", "image/webp"],
   });
 
+  // Estado para estrutura do banco de dados
+  const [databaseStructure, setDatabaseStructure] = useState<string>("");
+  const [isLoadingStructure, setIsLoadingStructure] = useState<boolean>(false);
+  const [structureError, setStructureError] = useState<string | null>(null);
+
   const handleAddField = () => {
     if (newField.name && newField.label) {
       const id = Date.now().toString();
@@ -208,10 +215,61 @@ const ConfigurationPanel = () => {
     alert("Configurações do banco de dados salvas com sucesso!");
   };
 
+    const fetchDatabaseStructure = async () => {
+        setIsLoadingStructure(true);
+        setStructureError(null);
+        try {
+            // Em uma aplicação real, isso buscaria a estrutura do banco de dados do Supabase
+            // Aqui estamos apenas simulando um atraso e retornando a estrutura baseada nos campos atuais
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+
+            const structureSQL = `CREATE TABLE ${dbConfig.schema}.${dbConfig.tableName} (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+${fields
+                    .map((field) => {
+                        let type = "TEXT";
+                        if (field.type === "number") type = "NUMERIC";
+                        if (field.type === "date") type = "DATE";
+                        return `  ${field.name} ${type}${field.required ? " NOT NULL" : ""},`;
+                    })
+                    .join("\n")}
+  images JSONB DEFAULT '[]'::JSONB
+);`;
+
+            setDatabaseStructure(structureSQL);
+        } catch (error) {
+            console.error("Erro ao buscar estrutura do banco de dados:", error);
+            setStructureError(
+                "Não foi possível obter a estrutura do banco de dados. Verifique sua conexão e tente novamente.",
+            );
+        } finally {
+            setIsLoadingStructure(false);
+        }
+    };
+
   const saveStorageConfig = () => {
-    // Em uma aplicação real, isso salvaria as configurações no backend
+      // Em uma aplicação real, isso salvaria as configurações no backend
+    localStorage.setItem("storageConfig", JSON.stringify(storageConfig));
     alert("Configurações de armazenamento salvas com sucesso!");
   };
+
+  // Carregar configurações de armazenamento salvas
+  useEffect(() => {
+    const savedStorageConfig = localStorage.getItem("storageConfig");
+    if (savedStorageConfig) {
+      try {
+        const parsedConfig = JSON.parse(savedStorageConfig);
+        setStorageConfig(parsedConfig);
+      } catch (err) {
+        console.error(
+          "Erro ao carregar configurações de armazenamento salvas:",
+          err,
+        );
+      }
+    }
+  }, []);
 
   return (
     <div className="container mx-auto p-6 bg-background">
@@ -614,6 +672,54 @@ const ConfigurationPanel = () => {
                     </p>
                   </div>
 
+                                  <div className="space-y-2">
+                                      <Label htmlFor="supabaseUrl">
+                                          NEXT_PUBLIC_SUPABASE_URL
+                                      </Label>
+                                      <Input
+                                          id="supabaseUrl"
+                                          name="supabaseUrl"
+                                          value={dbConfig.supabaseUrl}
+                                          onChange={handleDbConfigChange}
+                                          placeholder="https://seu-projeto.supabase.co"
+                                      />
+                                      <p className="text-sm text-muted-foreground">
+                                          URL público do Supabase para conexão com o banco de dados.
+                                      </p>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                      <Label htmlFor="supabaseAnonKey">
+                                          NEXT_PUBLIC_SUPABASE_ANON_KEY
+                                      </Label>
+                                      <Input
+                                          id="supabaseAnonKey"
+                                          name="supabaseAnonKey"
+                                          type="password"
+                                          value={dbConfig.supabaseAnonKey}
+                                          onChange={handleDbConfigChange}
+                                          placeholder="sua-chave-anon-key"
+                                      />
+                                      <p className="text-sm text-muted-foreground">
+                                          Chave anônima do Supabase para autenticação pública.
+                                      </p>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                      <Label htmlFor="apiKey">Chave de API</Label>
+                                      <Input
+                                          id="apiKey"
+                                          name="apiKey"
+                                          type="password"
+                                          value={dbConfig.apiKey}
+                                          onChange={handleDbConfigChange}
+                                          placeholder="sua-chave-anon-ou-service-role"
+                                      />
+                                      <p className="text-sm text-muted-foreground">
+                                          Chave anon ou service_role do projeto Supabase.
+                                      </p>
+                                  </div>
+
                   <div className="pt-4">
                     <Button onClick={saveDbConfig} className="w-full">
                       <Save className="h-4 w-4 mr-2" />
@@ -635,9 +741,32 @@ const ConfigurationPanel = () => {
                   serão refletidas aqui.
                 </p>
 
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-sm font-medium">
+                    Estrutura atual da tabela
+                  </h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchDatabaseStructure}
+                    disabled={isLoadingStructure}
+                  >
+                    {isLoadingStructure
+                      ? "Atualizando..."
+                      : "Atualizar estrutura"}
+                  </Button>
+                </div>
+
+                {structureError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                    {structureError}
+                  </div>
+                )}
+
                 <div className="bg-muted p-4 rounded-md overflow-x-auto">
                   <pre className="text-xs">
-                    {`CREATE TABLE ${dbConfig.schema}.${dbConfig.tableName} (
+                    {databaseStructure ||
+                      `CREATE TABLE ${dbConfig.schema}.${dbConfig.tableName} (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
