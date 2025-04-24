@@ -46,7 +46,7 @@ const Home = () => {
               </p>
             </CardContent>
             <CardFooter>
-              <Link to="/product-form" className="w-full">
+              <Link to="/products/new" className="w-full">
                 <Button className="w-full">Acessar Cadastro</Button>
               </Link>
             </CardFooter>

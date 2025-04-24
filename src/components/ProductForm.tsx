@@ -35,7 +35,6 @@ import { AspectRatio } from "./ui/aspect-ratio";
 import { X, Upload, Image as ImageIcon, ArrowLeft } from "lucide-react";
 import supabase from "@/lib/supabase";
 
-// Schema de validação do formulário
 const formSchema = z.object({
   title: z
     .string()
@@ -87,7 +86,6 @@ const ProductForm = () => {
 
       setImages((prevImages) => [...prevImages, ...newFiles]);
 
-      // Criar URLs para pré-visualização
       const newUrls = newFiles.map((file) => URL.createObjectURL(file));
       setImageUrls((prevUrls) => [...prevUrls, ...newUrls]);
     }
@@ -96,7 +94,6 @@ const ProductForm = () => {
   const removeImage = (index: number) => {
     setImages((prevImages) => prevImages.filter((_, i) => i !== index));
 
-    // Revogar URL de objeto para evitar vazamento de memória
     URL.revokeObjectURL(imageUrls[index]);
     setImageUrls((prevUrls) => prevUrls.filter((_, i) => i !== index));
   };
@@ -107,12 +104,10 @@ const ProductForm = () => {
     setSubmitSuccess(false);
 
     try {
-      // Converter string de selos para array
       const sealsArray = data.seals
         ? data.seals.split(",").map((seal) => seal.trim())
         : [];
 
-      // 1. Inserir dados do produto na tabela products
       const { data: productData, error: productError } = await supabase
         .from("products")
         .insert([
@@ -122,7 +117,7 @@ const ProductForm = () => {
             ingredients: data.ingredients,
             manufacturer: data.manufacturer,
             location: data.location,
-            // fair: data.fair, // Removido pois a coluna não existe no banco
+            fair: data.fair,
             seals: sealsArray,
             variations: data.variations,
             observations: data.observations,
@@ -130,47 +125,150 @@ const ProductForm = () => {
         ])
         .select();
 
-      if (productError) throw productError;
+      if (productError) {
+        if (productError.message && productError.message.includes("fair")) {
+          const { data: retryData, error: retryError } = await supabase
+            .from("products")
+            .insert([
+              {
+                title: data.title,
+                type: data.type,
+                ingredients: data.ingredients,
+                manufacturer: data.manufacturer,
+                location: data.location,
+                seals: sealsArray,
+                variations: data.variations,
+                observations: data.observations,
+              },
+            ])
+            .select();
 
-      // 2. Fazer upload das imagens e salvar referências
+          if (retryError) throw retryError;
+          if (retryData) productData = retryData;
+        } else {
+          throw productError;
+        }
+      }
+
+      if (!productData || productData.length === 0) {
+        throw new Error("Falha ao criar produto. Nenhum dado retornado.");
+      }
+
       if (images.length > 0 && productData && productData.length > 0) {
         const productId = productData[0].id;
+
+        const storageConfig = localStorage.getItem("storageConfig");
+        let bucketName = "produtos";
+        let imagePath = "products";
+
+        if (storageConfig) {
+          try {
+            const parsedConfig = JSON.parse(storageConfig);
+            bucketName = parsedConfig.bucketName || bucketName;
+            imagePath = parsedConfig.imagePath || imagePath;
+          } catch (err) {
+            console.error(
+              "Erro ao carregar configurações de armazenamento:",
+              err,
+            );
+          }
+        }
+
+        // Verificar se o bucket existe, se não, criar
+        const { data: buckets } = await supabase.storage.listBuckets();
+        const bucketExists = buckets?.some(
+          (bucket) => bucket.name === bucketName,
+        );
+
+        if (!bucketExists) {
+          const { error: createBucketError } =
+            await supabase.storage.createBucket(bucketName, {
+              public: true,
+            });
+          if (createBucketError) {
+            console.error("Erro ao criar bucket:", createBucketError);
+          }
+        }
+
+        // Array para armazenar URLs públicas das imagens
+        const imageUrls = [];
 
         for (let i = 0; i < images.length; i++) {
           const file = images[i];
           const fileExt = file.name.split(".").pop();
           const fileName = `${productId}_${i}.${fileExt}`;
-          const filePath = `products/${productId}/${fileName}`;
+          const filePath = `${imagePath}/${productId}/${fileName}`;
 
-          // Upload da imagem para o storage
-          const { error: uploadError } = await supabase.storage
-            .from("produtos")
-            .upload(filePath, file);
+          // Verificar se o diretório existe
+          try {
+            // Tentar fazer upload diretamente
+            const { data: uploadData, error: uploadError } =
+              await supabase.storage.from(bucketName).upload(filePath, file, {
+                cacheControl: "3600",
+                upsert: true,
+              });
 
-          if (uploadError) throw uploadError;
+            if (uploadError) {
+              console.error("Erro ao fazer upload da imagem:", uploadError);
+              continue;
+            }
 
-          // Inserir referência da imagem na tabela product_images
-          const { error: imageRefError } = await supabase
-            .from("product_images")
-            .insert([
-              {
-                product_id: productId,
-                image_path: filePath,
-                display_order: i,
-              },
-            ]);
+            // Obter URL pública da imagem
+            const { data: publicUrlData } = supabase.storage
+              .from(bucketName)
+              .getPublicUrl(filePath);
 
-          if (imageRefError) throw imageRefError;
+            const publicUrl = publicUrlData?.publicUrl;
+            imageUrls.push(publicUrl);
+
+            // Salvar referência da imagem no banco de dados
+            try {
+              const { error: imageRefError } = await supabase
+                .from("product_images")
+                .insert([
+                  {
+                    product_id: productId,
+                    image_path: filePath,
+                    public_url: publicUrl,
+                    display_order: i,
+                  },
+                ]);
+
+              if (imageRefError) {
+                console.error(
+                  "Erro ao salvar referência da imagem:",
+                  imageRefError,
+                );
+              }
+            } catch (imgErr) {
+              console.error("Erro ao processar referência da imagem:", imgErr);
+            }
+          } catch (err) {
+            console.error("Erro ao processar upload:", err);
+          }
+        }
+
+        // Atualizar o produto com as URLs das imagens
+        if (imageUrls.length > 0) {
+          const { error: updateError } = await supabase
+            .from("products")
+            .update({ images: imageUrls })
+            .eq("id", productId);
+
+          if (updateError) {
+            console.error(
+              "Erro ao atualizar produto com URLs de imagens:",
+              updateError,
+            );
+          }
         }
       }
 
-      // Limpar formulário e estado após sucesso
       form.reset();
       setImages([]);
       setImageUrls([]);
       setSubmitSuccess(true);
 
-      // Redirecionar para a lista de produtos após 2 segundos
       setTimeout(() => {
         navigate("/products");
       }, 2000);
