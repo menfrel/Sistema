@@ -98,44 +98,44 @@ const ProductList = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    const fetchProducts = async (isRefresh = false) => {
-        if (isRefresh) {
-            setRefreshing(true);
-        } else {
-            setLoading(true);
-        }
-        setError(null);
+  const fetchProducts = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
 
-        try {
-            // Simulação de busca de dados
-            // Em uma implementação real, você buscaria dados do Supabase aqui
-            // const { data, error } = await supabase
-            //   .from('products')
-            //   .select('*')
-            //   .order('created_at', { ascending: false });
-            //
-            // if (error) throw error;
-            // if (data) setProducts(data);
+    try {
+      // Simulação de busca de dados
+      // Em uma implementação real, você buscaria dados do Supabase aqui
+      // const { data, error } = await supabase
+      //   .from('products')
+      //   .select('*')
+      //   .order('created_at', { ascending: false });
+      //
+      // if (error) throw error;
+      // if (data) setProducts(data);
 
-            // Simulando um atraso de rede
-            await new Promise((resolve) => setTimeout(resolve, 500));
+      // Simulando um atraso de rede
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-            // Como estamos usando dados mockados, apenas resetamos para os dados originais
-            setProducts(mockProducts);
-        } catch (err) {
-            setError("Erro ao carregar produtos. Por favor, tente novamente.");
-            console.error(err);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
+      // Como estamos usando dados mockados, apenas resetamos para os dados originais
+      setProducts(mockProducts);
+    } catch (err) {
+      setError("Erro ao carregar produtos. Por favor, tente novamente.");
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
   useEffect(() => {
-      fetchProducts();
+    fetchProducts();
   }, []);
 
   // Filtragem de produtos - busca em múltiplos campos
@@ -173,24 +173,22 @@ const ProductList = () => {
     setCurrentPage(pageNumber);
   };
 
-  const handleDeleteProduct = (id: string) => {
-    // Em uma implementação real, você excluiria o produto do Supabase aqui
-    // const deleteProduct = async () => {
-    //   const { error } = await supabase
-    //     .from('products')
-    //     .delete()
-    //     .eq('id', id);
-    //
-    //   if (!error) {
-    //     setProducts(products.filter(product => product.id !== id));
-    //   }
-    // };
-    //
-    // deleteProduct();
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase.from("products").delete().eq("id", id);
 
-    // Simulação de exclusão
-    setProducts(products.filter((product) => product.id !== id));
-    setProductToDelete(null);
+      if (error) throw error;
+
+      // Atualiza a lista local removendo o produto excluído
+      setProducts(products.filter((product) => product.id !== id));
+      setProductToDelete(null);
+    } catch (err: any) {
+      console.error("Erro ao excluir produto:", err);
+      setError(`Erro ao excluir produto: ${err.message || "Tente novamente"}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -257,25 +255,24 @@ const ProductList = () => {
               Novo Produto
             </Button>
           </div>
-                  {error && (
-                      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-                          {error}
-                          <Button
-                              variant="link"
-                              className="ml-2 text-red-700 underline"
-                              onClick={() => fetchProducts()}
-                          >
-                              Tentar novamente
-                          </Button>
-                      </div>
-                  )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+              {error}
+              <Button
+                variant="link"
+                className="ml-2 text-red-700 underline"
+                onClick={() => fetchProducts()}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          )}
 
-                  {loading ? (
-                      <div className="text-center py-8 border rounded-md">
-                          <p className="text-muted-foreground">Carregando produtos...</p>
-                      </div>
-                  ) : currentItems.length > 0 ? (
-          
+          {loading ? (
+            <div className="text-center py-8 border rounded-md">
+              <p className="text-muted-foreground">Carregando produtos...</p>
+            </div>
+          ) : currentItems.length > 0 ? (
             <div className="border rounded-md">
               <Table>
                 <TableHeader>
@@ -328,7 +325,7 @@ const ProductList = () => {
                             variant="ghost"
                             size="icon"
                             onClick={() =>
-                                navigate(`/products/${product.id}?edit=true`)
+                              navigate(`/products/${product.id}?edit=true`)
                             }
                             title="Editar"
                           >
