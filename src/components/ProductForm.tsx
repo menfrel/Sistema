@@ -45,6 +45,58 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+// Função para salvar imagem localmente (simulação)
+const saveImageLocally = async (
+  file: File,
+  productId: string,
+  index: number,
+) => {
+  try {
+    // Em um ambiente real, aqui você usaria APIs como FileSystem em Node.js
+    // ou IndexedDB no navegador para salvar localmente
+    // Como estamos em um ambiente de navegador sem acesso ao sistema de arquivos,
+    // vamos simular o salvamento local usando localStorage
+
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const base64Data = reader.result as string;
+          // Salvar referência da imagem no localStorage
+          const localImages = JSON.parse(
+            localStorage.getItem("localImages") || "{}",
+          );
+          if (!localImages[productId]) {
+            localImages[productId] = [];
+          }
+
+          // Armazenar apenas o nome e referência, não o base64 completo para não sobrecarregar
+          const imageRef = {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            timestamp: new Date().toISOString(),
+            path: `local_storage/${productId}/${index}_${file.name}`,
+          };
+
+          localImages[productId].push(imageRef);
+          localStorage.setItem("localImages", JSON.stringify(localImages));
+
+          // Em um caso real, retornaríamos o caminho do arquivo local
+          resolve(`local_storage/${productId}/${index}_${file.name}`);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+      reader.readAsDataURL(file);
+    });
+  } catch (error) {
+    console.error("Erro ao salvar imagem localmente:", error);
+    throw error;
+  }
+};
+
 const ProductForm = () => {
   const navigate = useNavigate();
   const [images, setImages] = useState<File[]>([]);
@@ -52,6 +104,9 @@ const ProductForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<{
+    [key: number]: number;
+  }>({});
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -90,18 +145,27 @@ const ProductForm = () => {
 
     URL.revokeObjectURL(imageUrls[index]);
     setImageUrls((prevUrls) => prevUrls.filter((_, i) => i !== index));
+
+    // Remover progresso de upload se existir
+    setUploadProgress((prev) => {
+      const newProgress = { ...prev };
+      delete newProgress[index];
+      return newProgress;
+    });
   };
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
     setSubmitError("");
     setSubmitSuccess(false);
+    setUploadProgress({});
 
     try {
       const sealsArray = data.seals
         ? data.seals.split(",").map((seal) => seal.trim())
         : [];
 
+      // Inserir produto no banco de dados
       const { data: productData, error: productError } = await supabase
         .from("products")
         .insert([
@@ -148,91 +212,120 @@ const ProductForm = () => {
         throw new Error("Falha ao criar produto. Nenhum dado retornado.");
       }
 
+      const productId = productData[0].id;
+
       // Get storage config
       const storageConfig = loadStorageConfig();
       let bucketName = storageConfig.bucketName || "products";
       let imagePath = storageConfig.imagePath || "uploads";
 
-      // Check if bucket exists, create if not
-      const { data: buckets } = await supabase.storage.listBuckets();
-      const bucketExists = buckets?.some(
-        (bucket) => bucket.name === bucketName,
-      );
+      // Verificar se o bucket existe e criar se não existir
+      try {
+        const { data: buckets } = await supabase.storage.listBuckets();
+        const bucketExists = buckets?.some(
+          (bucket) => bucket.name === bucketName,
+        );
 
-      if (!bucketExists) {
-        const { error: createBucketError } =
-          await supabase.storage.createBucket(bucketName, {
-            public: true,
-          });
-        if (createBucketError) {
-          console.error("Erro ao criar bucket:", createBucketError);
+        if (!bucketExists) {
+          const { error: createBucketError } =
+            await supabase.storage.createBucket(bucketName, {
+              public: true,
+            });
+
+          if (createBucketError) {
+            console.error("Erro ao criar bucket:", createBucketError);
+            // Tentar criar com outro nome se falhar
+            bucketName = "product-images";
+            await supabase.storage.createBucket(bucketName, { public: true });
+          }
         }
+      } catch (bucketError) {
+        console.error("Erro ao verificar/criar bucket:", bucketError);
+        // Usar um bucket padrão se falhar
+        bucketName = "product-images";
       }
 
-      const imageUrls = [];
+      const imageUrls: string[] = [];
+      const localImagePaths: string[] = [];
 
       // Upload images
       for (let i = 0; i < images.length; i++) {
         const file = images[i];
         const fileExt = file.name.split(".").pop();
-        const fileName = `${productData[0].id}_${i}.${fileExt}`;
-        const filePath = `${imagePath}/${productData[0].id}/${fileName}`;
+        const fileName = `${productId}_${i}.${fileExt}`;
+        const filePath = `${imagePath}/${productId}/${fileName}`;
 
-        // Upload the file
-        const { error: uploadError } = await supabase.storage
-          .from(bucketName)
-          .upload(filePath, file);
-
-        if (uploadError) {
-          console.error("Erro ao fazer upload da imagem:", uploadError);
-          continue;
-        }
-
-        // Get public URL
-        const { data: publicUrlData } = supabase.storage
-          .from(bucketName)
-          .getPublicUrl(filePath);
-
-        const publicUrl = publicUrlData?.publicUrl;
-        imageUrls.push(publicUrl);
+        setUploadProgress((prev) => ({
+          ...prev,
+          [i]: 10, // Iniciando upload
+        }));
 
         try {
-          // Store image reference in database
-          const { error: imageRefError } = await supabase
-            .from("product_images")
-            .insert([
+          // 1. Salvar localmente (redundância)
+          const localPath = await saveImageLocally(file, productId, i);
+          localImagePaths.push(localPath);
+
+          setUploadProgress((prev) => ({
+            ...prev,
+            [i]: 40, // Salvo localmente
+          }));
+
+          // 2. Upload para o Supabase Storage
+          const { error: uploadError, data: uploadData } =
+            await supabase.storage.from(bucketName).upload(filePath, file, {
+              cacheControl: "3600",
+              upsert: true,
+            });
+
+          setUploadProgress((prev) => ({
+            ...prev,
+            [i]: 70, // Upload concluído
+          }));
+
+          if (uploadError) {
+            console.error("Erro ao fazer upload da imagem:", uploadError);
+            continue;
+          }
+
+          // 3. Obter URL pública
+          const { data: publicUrlData } = supabase.storage
+            .from(bucketName)
+            .getPublicUrl(filePath);
+
+          const publicUrl = publicUrlData?.publicUrl;
+          if (publicUrl) {
+            imageUrls.push(publicUrl);
+
+            // 4. Salvar referência da imagem no banco
+            await supabase.from("product_images").insert([
               {
-                product_id: productData[0].id,
+                product_id: productId,
                 image_path: filePath,
                 public_url: publicUrl,
+                local_path: localPath,
                 display_order: i,
               },
             ]);
-
-          if (imageRefError) {
-            console.error(
-              "Erro ao salvar referência da imagem:",
-              imageRefError,
-            );
           }
-        } catch (imgErr) {
-          console.error("Erro ao processar referência da imagem:", imgErr);
+
+          setUploadProgress((prev) => ({
+            ...prev,
+            [i]: 100, // Processo completo
+          }));
+        } catch (imgError) {
+          console.error(`Erro ao processar imagem ${i}:`, imgError);
         }
       }
 
-      // Update product with image URLs
+      // Atualizar produto com URLs das imagens
       if (imageUrls.length > 0) {
-        const { error: updateError } = await supabase
+        await supabase
           .from("products")
-          .update({ images: imageUrls })
-          .eq("id", productData[0].id);
-
-        if (updateError) {
-          console.error(
-            "Erro ao atualizar produto com URLs de imagens:",
-            updateError,
-          );
-        }
+          .update({
+            images: imageUrls,
+            local_images: localImagePaths,
+          })
+          .eq("id", productId);
       }
 
       form.reset();
@@ -469,6 +562,12 @@ const ProductForm = () => {
                             className="rounded-md object-cover w-full h-full"
                           />
                         </AspectRatio>
+                        {uploadProgress[index] !== undefined &&
+                          uploadProgress[index] < 100 && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 text-center">
+                              Progresso: {uploadProgress[index]}%
+                            </div>
+                          )}
                         <Button
                           type="button"
                           variant="destructive"
