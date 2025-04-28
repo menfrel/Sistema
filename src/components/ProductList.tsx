@@ -47,95 +47,71 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Eye, Pencil, Trash2, Search, Filter } from "lucide-react";
 
-const mockProducts = [
-  {
-    id: "1",
-    title: "Café Orgânico",
-    type: "Alimento",
-    manufacturer: "Fazenda Boa Vista",
-    location: "Serra do Caparaó, MG",
-    createdAt: "2023-05-15",
-  },
-  {
-    id: "2",
-    title: "Mel Silvestre",
-    type: "Alimento",
-    manufacturer: "Apiário Flor do Campo",
-    location: "Vale do Ribeira, SP",
-    createdAt: "2023-06-22",
-  },
-  {
-    id: "3",
-    title: "Sabonete de Lavanda",
-    type: "Cosmético",
-    manufacturer: "Ervas e Essências",
-    location: "Gramado, RS",
-    createdAt: "2023-04-10",
-  },
-  {
-    id: "4",
-    title: "Queijo Artesanal",
-    type: "Alimento",
-    manufacturer: "Laticínios Serra Azul",
-    location: "São Roque de Minas, MG",
-    createdAt: "2023-07-05",
-  },
-  {
-    id: "5",
-    title: "Vinho Tinto",
-    type: "Bebida",
-    manufacturer: "Vinícola Vale dos Vinhedos",
-    location: "Bento Gonçalves, RS",
-    createdAt: "2023-03-18",
-  },
-];
+// Interface for product data
+interface Product {
+  id: string;
+  title: string;
+  type: string;
+  manufacturer?: string;
+  location?: string;
+  created_at?: string;
+  createdAt?: string; // For backward compatibility with mock data
+  [key: string]: any; // For other fields
+}
 
 const ProductList = () => {
   const navigate = useNavigate();
-  const [products, setProducts] = useState(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(5);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-    const fetchProducts = async (isRefresh = false) => {
-        if (isRefresh) {
-            setRefreshing(true);
-        } else {
-            setLoading(true);
-        }
-        setError(null);
+  const fetchProducts = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
 
-        try {
-            // Simulação de busca de dados
-            // Em uma implementação real, você buscaria dados do Supabase aqui
-            // const { data, error } = await supabase
-            //   .from('products')
-            //   .select('*')
-            //   .order('created_at', { ascending: false });
-            //
-            // if (error) throw error;
-            // if (data) setProducts(data);
+    try {
+      // Fetch data from Supabase
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-            // Simulando um atraso de rede
-            await new Promise((resolve) => setTimeout(resolve, 500));
+      if (error) throw error;
 
-            // Como estamos usando dados mockados, apenas resetamos para os dados originais
-            setProducts(mockProducts);
-        } catch (err) {
-            setError("Erro ao carregar produtos. Por favor, tente novamente.");
-            console.error(err);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
+      if (data) {
+        // Format data to match expected structure
+        const formattedData = data.map((product) => ({
+          ...product,
+          // Ensure createdAt is available for backward compatibility
+          createdAt: product.created_at || new Date().toISOString(),
+        }));
+        setProducts(formattedData);
+      } else {
+        setProducts([]);
+      }
+    } catch (err: any) {
+      setError(
+        `Erro ao carregar produtos: ${err.message || "Tente novamente"}`,
+      );
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
-      fetchProducts();
+    fetchProducts();
   }, []);
 
   // Filtragem de produtos - busca em múltiplos campos
@@ -156,7 +132,7 @@ const ProductList = () => {
     const matchesType =
       typeFilter === "" || typeFilter === "todos"
         ? true
-        : product.type.toLowerCase() === typeFilter.toLowerCase();
+        : product.type?.toLowerCase() === typeFilter.toLowerCase();
 
     return matchesSearch && matchesType;
   });
@@ -173,24 +149,22 @@ const ProductList = () => {
     setCurrentPage(pageNumber);
   };
 
-  const handleDeleteProduct = (id: string) => {
-    // Em uma implementação real, você excluiria o produto do Supabase aqui
-    // const deleteProduct = async () => {
-    //   const { error } = await supabase
-    //     .from('products')
-    //     .delete()
-    //     .eq('id', id);
-    //
-    //   if (!error) {
-    //     setProducts(products.filter(product => product.id !== id));
-    //   }
-    // };
-    //
-    // deleteProduct();
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase.from("products").delete().eq("id", id);
 
-    // Simulação de exclusão
-    setProducts(products.filter((product) => product.id !== id));
-    setProductToDelete(null);
+      if (error) throw error;
+
+      // Atualiza a lista local removendo o produto excluído
+      setProducts(products.filter((product) => product.id !== id));
+      setProductToDelete(null);
+    } catch (err: any) {
+      console.error("Erro ao excluir produto:", err);
+      setError(`Erro ao excluir produto: ${err.message || "Tente novamente"}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -257,25 +231,24 @@ const ProductList = () => {
               Novo Produto
             </Button>
           </div>
-                  {error && (
-                      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-                          {error}
-                          <Button
-                              variant="link"
-                              className="ml-2 text-red-700 underline"
-                              onClick={() => fetchProducts()}
-                          >
-                              Tentar novamente
-                          </Button>
-                      </div>
-                  )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+              {error}
+              <Button
+                variant="link"
+                className="ml-2 text-red-700 underline"
+                onClick={() => fetchProducts()}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          )}
 
-                  {loading ? (
-                      <div className="text-center py-8 border rounded-md">
-                          <p className="text-muted-foreground">Carregando produtos...</p>
-                      </div>
-                  ) : currentItems.length > 0 ? (
-          
+          {loading ? (
+            <div className="text-center py-8 border rounded-md">
+              <p className="text-muted-foreground">Carregando produtos...</p>
+            </div>
+          ) : currentItems.length > 0 ? (
             <div className="border rounded-md">
               <Table>
                 <TableHeader>
@@ -310,9 +283,9 @@ const ProductList = () => {
                         {product.location}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">
-                        {new Date(product.createdAt).toLocaleDateString(
-                          "pt-BR",
-                        )}
+                        {new Date(
+                          product.created_at || product.createdAt || "",
+                        ).toLocaleDateString("pt-BR")}
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
@@ -328,7 +301,7 @@ const ProductList = () => {
                             variant="ghost"
                             size="icon"
                             onClick={() =>
-                                navigate(`/products/${product.id}?edit=true`)
+                              navigate(`/products/${product.id}?edit=true`)
                             }
                             title="Editar"
                           >
