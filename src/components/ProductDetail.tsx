@@ -229,7 +229,7 @@ const ProductDetail = () => {
         <div className="flex space-x-2">
           <Button
             variant="outline"
-            onClick={fetchProductData}
+            onClick={() => fetchProductData()}   // <<< aqui
             disabled={loading}
           >
             {loading ? "Atualizando..." : "Atualizar"}

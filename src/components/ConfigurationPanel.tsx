@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import supabase from "@/lib/supabase";
+import type { DatabaseConfig, StorageConfig } from "@/lib/config";
 import {
   loadStorageConfig,
   loadDbConfig,
@@ -60,21 +61,21 @@ interface Field {
   options?: string[];
 }
 
-interface DatabaseConfig {
-  [x: string]: string | number | readonly string[];
-  tableName: string;
-  schema: string;
-  connectionString: string;
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
-}
+//interface DatabaseConfig {
+//[x: string]: string | number | readonly string[];
+//tableName: string;
+//schema: string;
+//connectionString: string;
+//supabaseUrl?: string;
+//supabaseAnonKey?: string;
+//}
 
-interface StorageConfig {
-  bucketName: string;
-  imagePath: string;
-  maxFileSize: number;
-  allowedTypes: string[];
-}
+//interface StorageConfig {
+//  bucketName: string;
+//  imagePath: string;
+//  maxFileSize: number;
+//  allowedTypes: string[];
+//}
 
 const ConfigurationPanel = () => {
   const navigate = useNavigate();
