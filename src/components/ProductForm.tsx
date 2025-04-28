@@ -6,14 +6,6 @@ import { z } from "zod";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import { useParams } from "react-router-dom";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import {
   Form,
   FormControl,
@@ -41,7 +33,7 @@ const formSchema = z.object({
   title: z
     .string()
     .min(3, { message: "O título deve ter pelo menos 3 caracteres" }),
-  type: z.string().min(1, { message: "Selecione um tipo de produto" }),
+  type: z.string().min(1, { message: "Informe o tipo de produto" }),
   ingredients: z.string().optional(),
   manufacturer: z.string().min(1, { message: "Informe o fabricante" }),
   location: z.string().min(1, { message: "Informe a localização" }),
@@ -156,23 +148,12 @@ const ProductForm = () => {
         throw new Error("Falha ao criar produto. Nenhum dado retornado.");
       }
 
-      const storageConfig = localStorage.getItem("storageConfig");
-      let bucketName = "products";
-      let imagePath = "uploads";
+      // Get storage config
+      const storageConfig = loadStorageConfig();
+      let bucketName = storageConfig.bucketName || "products";
+      let imagePath = storageConfig.imagePath || "uploads";
 
-      if (storageConfig) {
-        try {
-          const parsedConfig = JSON.parse(storageConfig);
-          bucketName = parsedConfig.bucketName || bucketName;
-          imagePath = parsedConfig.imagePath || imagePath;
-        } catch (err) {
-          console.error(
-            "Erro ao carregar configurações de armazenamento:",
-            err,
-          );
-        }
-      }
-
+      // Check if bucket exists, create if not
       const { data: buckets } = await supabase.storage.listBuckets();
       const bucketExists = buckets?.some(
         (bucket) => bucket.name === bucketName,
@@ -190,33 +171,24 @@ const ProductForm = () => {
 
       const imageUrls = [];
 
+      // Upload images
       for (let i = 0; i < images.length; i++) {
         const file = images[i];
         const fileExt = file.name.split(".").pop();
         const fileName = `${productData[0].id}_${i}.${fileExt}`;
         const filePath = `${imagePath}/${productData[0].id}/${fileName}`;
 
-        const { data: buckets } = await supabase.storage.listBuckets();
-        const bucketExists = buckets?.some(
-          (bucket) => bucket.name === bucketName,
-        );
+        // Upload the file
+        const { error: uploadError } = await supabase.storage
+          .from(bucketName)
+          .upload(filePath, file);
 
-        if (!bucketExists) {
-          const { error: createBucketError } =
-            await supabase.storage.createBucket(bucketName, {
-              public: true,
-            });
-          if (createBucketError) {
-            console.error("Erro ao criar bucket:", createBucketError);
-          }
-        }
-
-        const uploadError = [];
         if (uploadError) {
           console.error("Erro ao fazer upload da imagem:", uploadError);
           continue;
         }
 
+        // Get public URL
         const { data: publicUrlData } = supabase.storage
           .from(bucketName)
           .getPublicUrl(filePath);
@@ -225,6 +197,7 @@ const ProductForm = () => {
         imageUrls.push(publicUrl);
 
         try {
+          // Store image reference in database
           const { error: imageRefError } = await supabase
             .from("product_images")
             .insert([
@@ -247,12 +220,12 @@ const ProductForm = () => {
         }
       }
 
-      const { id: productId } = useParams<{ id: string }>();
+      // Update product with image URLs
       if (imageUrls.length > 0) {
         const { error: updateError } = await supabase
           .from("products")
           .update({ images: imageUrls })
-          .eq("id", productId);
+          .eq("id", productData[0].id);
 
         if (updateError) {
           console.error(
@@ -326,23 +299,12 @@ const ProductForm = () => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Tipo*</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione o tipo" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="alimento">Alimento</SelectItem>
-                          <SelectItem value="bebida">Bebida</SelectItem>
-                          <SelectItem value="cosmético">Cosmético</SelectItem>
-                          <SelectItem value="artesanato">Artesanato</SelectItem>
-                          <SelectItem value="outro">Outro</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <Input
+                          placeholder="Ex: alimento, bebida, cosmético"
+                          {...field}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

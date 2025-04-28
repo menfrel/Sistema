@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import supabase from "@/lib/supabase";
-import { loadStorageConfig, loadDbConfig } from "@/lib/config";
+import {
+  loadStorageConfig,
+  loadDbConfig,
+  saveDbConfig,
+  saveStorageConfig,
+} from "@/lib/config";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -15,13 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -67,6 +65,8 @@ interface DatabaseConfig {
   tableName: string;
   schema: string;
   connectionString: string;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
 }
 
 interface StorageConfig {
@@ -84,7 +84,7 @@ const ConfigurationPanel = () => {
   // Configurações de campos
   const [fields, setFields] = useState<Field[]>([
     { id: "1", name: "title", label: "Título", type: "text", required: true },
-    { id: "2", name: "type", label: "Tipo", type: "select", required: true },
+    { id: "2", name: "type", label: "Tipo", type: "text", required: true },
     {
       id: "3",
       name: "ingredients",
@@ -132,13 +132,16 @@ const ConfigurationPanel = () => {
   const [dbConfig, setDbConfig] = useState<DatabaseConfig>({
     tableName: "products",
     schema: "public",
-    connectionString: "https://xyzcompany.supabase.co",
+    connectionString: "https://tujoonpbanvkzhqliqdq.supabase.co",
+    supabaseUrl: "https://tujoonpbanvkzhqliqdq.supabase.co",
+    supabaseAnonKey:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1am9vbnBiYW52a3pocWxpcWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0MjkzNjAsImV4cCI6MjA2MTAwNTM2MH0.4r5gSSH8ppvvO8ad2kW_JUVgdIKFID9Ck2J5ftZC2HQ",
   });
 
   // Configurações de armazenamento
   const [storageConfig, setStorageConfig] = useState<StorageConfig>({
-    bucketName: "produtos",
-    imagePath: "uploads/products",
+    bucketName: "products",
+    imagePath: "uploads",
     maxFileSize: 5,
     allowedTypes: ["image/jpeg", "image/png", "image/webp"],
   });
@@ -211,8 +214,9 @@ const ConfigurationPanel = () => {
     }
   };
 
-  const saveDbConfig = () => {
-    // Em uma aplicação real, isso salvaria as configurações no backend
+  const handleSaveDbConfig = () => {
+    // Salvar configurações no localStorage
+    saveDbConfig(dbConfig);
     alert("Configurações do banco de dados salvas com sucesso!");
   };
 
@@ -250,17 +254,28 @@ ${fields
     }
   };
 
-  const saveStorageConfig = () => {
-    // Em uma aplicação real, isso salvaria as configurações no backend
-    localStorage.setItem("storageConfig", JSON.stringify(storageConfig));
+  const handleSaveStorageConfig = () => {
+    // Salvar configurações no localStorage
+    saveStorageConfig(storageConfig);
     alert("Configurações de armazenamento salvas com sucesso!");
   };
 
   // Carregar configurações salvas
   useEffect(() => {
     // Carregar configurações usando as funções do módulo config
-    setStorageConfig(loadStorageConfig());
-    setDbConfig(loadDbConfig());
+    const storedStorageConfig = loadStorageConfig();
+    const storedDbConfig = loadDbConfig();
+
+    setStorageConfig(storedStorageConfig);
+    setDbConfig({
+      ...storedDbConfig,
+      supabaseUrl:
+        storedDbConfig.supabaseUrl ||
+        "https://tujoonpbanvkzhqliqdq.supabase.co",
+      supabaseAnonKey:
+        storedDbConfig.supabaseAnonKey ||
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1am9vbnBiYW52a3pocWxpcWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0MjkzNjAsImV4cCI6MjA2MTAwNTM2MH0.4r5gSSH8ppvvO8ad2kW_JUVgdIKFID9Ck2J5ftZC2HQ",
+    });
   }, []);
 
   return (
@@ -344,25 +359,14 @@ ${fields
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="fieldType">Tipo do Campo</Label>
-                      <Select
+                      <Input
+                        id="fieldType"
+                        placeholder="Ex: text, number, textarea"
                         value={newField.type}
-                        onValueChange={(value) =>
-                          setNewField({ ...newField, type: value })
+                        onChange={(e) =>
+                          setNewField({ ...newField, type: e.target.value })
                         }
-                      >
-                        <SelectTrigger id="fieldType">
-                          <SelectValue placeholder="Selecione um tipo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="text">Texto</SelectItem>
-                          <SelectItem value="number">Número</SelectItem>
-                          <SelectItem value="textarea">
-                            Área de Texto
-                          </SelectItem>
-                          <SelectItem value="select">Seleção</SelectItem>
-                          <SelectItem value="date">Data</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
                     <div className="flex items-center space-x-2 pt-8">
                       <Switch
@@ -419,25 +423,17 @@ ${fields
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="editFieldType">Tipo do Campo</Label>
-                          <Select
+                          <Input
+                            id="editFieldType"
                             value={editedField.type}
-                            onValueChange={(value) =>
-                              setEditedField({ ...editedField, type: value })
+                            onChange={(e) =>
+                              setEditedField({
+                                ...editedField,
+                                type: e.target.value,
+                              })
                             }
-                          >
-                            <SelectTrigger id="editFieldType">
-                              <SelectValue placeholder="Selecione um tipo" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="text">Texto</SelectItem>
-                              <SelectItem value="number">Número</SelectItem>
-                              <SelectItem value="textarea">
-                                Área de Texto
-                              </SelectItem>
-                              <SelectItem value="select">Seleção</SelectItem>
-                              <SelectItem value="date">Data</SelectItem>
-                            </SelectContent>
-                          </Select>
+                            placeholder="Ex: text, number, textarea"
+                          />
                         </div>
                         <div className="flex items-center space-x-2 pt-8">
                           <Switch
@@ -657,7 +653,7 @@ ${fields
                       name="connectionString"
                       value={dbConfig.connectionString}
                       onChange={handleDbConfigChange}
-                      placeholder="https://xyzcompany.supabase.co"
+                      placeholder="https://tujoonpbanvkzhqliqdq.supabase.co"
                     />
                     <p className="text-sm text-muted-foreground">
                       URL do projeto Supabase para conexão com o banco de dados.
@@ -665,15 +661,13 @@ ${fields
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="supabaseUrl">
-                      NEXT_PUBLIC_SUPABASE_URL
-                    </Label>
+                    <Label htmlFor="supabaseUrl">SUPABASE_URL</Label>
                     <Input
                       id="supabaseUrl"
                       name="supabaseUrl"
                       value={dbConfig.supabaseUrl}
                       onChange={handleDbConfigChange}
-                      placeholder="https://seu-projeto.supabase.co"
+                      placeholder="https://tujoonpbanvkzhqliqdq.supabase.co"
                     />
                     <p className="text-sm text-muted-foreground">
                       URL público do Supabase para conexão com o banco de dados.
@@ -681,39 +675,22 @@ ${fields
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="supabaseAnonKey">
-                      NEXT_PUBLIC_SUPABASE_ANON_KEY
-                    </Label>
+                    <Label htmlFor="supabaseAnonKey">SUPABASE_ANON_KEY</Label>
                     <Input
                       id="supabaseAnonKey"
                       name="supabaseAnonKey"
                       type="password"
                       value={dbConfig.supabaseAnonKey}
                       onChange={handleDbConfigChange}
-                      placeholder="sua-chave-anon-key"
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                     />
                     <p className="text-sm text-muted-foreground">
                       Chave anônima do Supabase para autenticação pública.
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="apiKey">Chave de API</Label>
-                    <Input
-                      id="apiKey"
-                      name="apiKey"
-                      type="password"
-                      value={dbConfig.apiKey}
-                      onChange={handleDbConfigChange}
-                      placeholder="sua-chave-anon-ou-service-role"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Chave anon ou service_role do projeto Supabase.
-                    </p>
-                  </div>
-
                   <div className="pt-4">
-                    <Button onClick={saveDbConfig} className="w-full">
+                    <Button onClick={handleSaveDbConfig} className="w-full">
                       <Save className="h-4 w-4 mr-2" />
                       Salvar Configurações do Banco de Dados
                     </Button>
@@ -799,7 +776,7 @@ ${fields
                       name="bucketName"
                       value={storageConfig.bucketName}
                       onChange={handleStorageConfigChange}
-                      placeholder="product-images"
+                      placeholder="products"
                     />
                     <p className="text-sm text-muted-foreground">
                       Nome do bucket no Supabase Storage para armazenar as
@@ -814,7 +791,7 @@ ${fields
                       name="imagePath"
                       value={storageConfig.imagePath}
                       onChange={handleStorageConfigChange}
-                      placeholder="uploads/products"
+                      placeholder="uploads"
                     />
                     <p className="text-sm text-muted-foreground">
                       Caminho dentro do bucket onde as imagens serão
@@ -859,7 +836,10 @@ ${fields
                   </div>
 
                   <div className="pt-4">
-                    <Button onClick={saveStorageConfig} className="w-full">
+                    <Button
+                      onClick={handleSaveStorageConfig}
+                      className="w-full"
+                    >
                       <Save className="h-4 w-4 mr-2" />
                       Salvar Configurações de Armazenamento
                     </Button>

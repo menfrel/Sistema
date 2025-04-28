@@ -39,72 +39,7 @@ import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import supabase from "../lib/supabase";
-
-const mockProducts = [
-  {
-    id: "1",
-    title: "Café Orgânico",
-    type: "Alimento",
-    ingredients: "Grãos de café 100% arábica, cultivados sem agrotóxicos.",
-    manufacturer: "Fazenda Boa Vista",
-    location: "Serra do Caparaó, MG",
-    fair: "Feira do Produtor Rural",
-    seals: ["Orgânico", "Comércio Justo"],
-    variations: "Moagem fina, média e grossa",
-    exportOptions: true,
-    observations: "Produto premiado na categoria café especial em 2022.",
-    createdAt: "2023-05-15",
-    images: [
-      "https://images.unsplash.com/photo-1447933601403-0c6688de566e?w=800&q=80",
-      "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80",
-    ],
-  },
-  {
-    id: "2",
-    title: "Mel Silvestre",
-    type: "Alimento",
-    ingredients: "Mel puro de abelhas silvestres.",
-    manufacturer: "Apiário Flor do Campo",
-    location: "Vale do Ribeira, SP",
-    fair: "Feira de Orgânicos",
-    seals: ["Orgânico"],
-    variations: "Pote 250g, 500g e 1kg",
-    exportOptions: false,
-    observations: "Mel coletado em área de preservação ambiental.",
-    createdAt: "2023-06-22",
-    images: [
-      "https://images.unsplash.com/photo-1587049352851-8d4e89133924?w=800&q=80",
-    ],
-  },
-  {
-    id: "3",
-    title: "Sabonete de Lavanda",
-    type: "Cosmético",
-    ingredients:
-      "Óleo de coco, óleo de oliva, manteiga de karité, óleo essencial de lavanda.",
-    manufacturer: "Ervas e Essências",
-    location: "Gramado, RS",
-    fair: "Feira de Artesanato",
-    seals: ["Vegano", "Cruelty-free"],
-    variations: "Barra 90g e 120g",
-    exportOptions: false,
-    observations: "Produzido artesanalmente em pequenos lotes.",
-    createdAt: "2023-04-10",
-    images: [
-      "https://images.unsplash.com/photo-1600857544200-b2f666a9a2ec?w=800&q=80",
-      "https://images.unsplash.com/photo-1600857544398-d1e0b16d27e8?w=800&q=80",
-      "https://images.unsplash.com/photo-1600857544352-25c03a07f1ad?w=800&q=80",
-    ],
-  },
-];
 
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -122,19 +57,7 @@ const ProductDetail = () => {
     const searchParams = new URLSearchParams(window.location.search);
     const shouldEdit = searchParams.get("edit") === "true";
 
-    setTimeout(() => {
-      const foundProduct = mockProducts.find((p) => p.id === id);
-      if (foundProduct) {
-        setProduct(foundProduct);
-        setEditedProduct(foundProduct);
-        if (shouldEdit) {
-          setIsEditing(true);
-        }
-      } else {
-        setError("Produto não encontrado");
-      }
-      setLoading(false);
-    }, 500);
+    fetchProductData(shouldEdit);
   }, [id]);
 
   const handleDelete = async () => {
@@ -153,43 +76,30 @@ const ProductDetail = () => {
     }
   };
 
-  const fetchProductData = async () => {
+  const fetchProductData = async (shouldEdit = false) => {
     setLoading(true);
     try {
-      // Primeiro tenta buscar do Supabase
+      // Buscar do Supabase
       const { data, error } = await supabase
         .from("products")
         .select("*")
         .eq("id", id)
         .single();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (data) {
         setProduct(data);
         setEditedProduct(data);
-      } else {
-        // Fallback para dados mockados se não encontrar no Supabase
-        const foundProduct = mockProducts.find((p) => p.id === id);
-        if (foundProduct) {
-          setProduct(foundProduct);
-          setEditedProduct(foundProduct);
-        } else {
-          setError("Produto não encontrado");
+        if (shouldEdit) {
+          setIsEditing(true);
         }
-      }
-    } catch (err) {
-      console.error("Erro ao buscar produto:", err);
-      // Fallback para dados mockados em caso de erro
-      const foundProduct = mockProducts.find((p) => p.id === id);
-      if (foundProduct) {
-        setProduct(foundProduct);
-        setEditedProduct(foundProduct);
       } else {
         setError("Produto não encontrado");
       }
+    } catch (err: any) {
+      console.error("Erro ao buscar produto:", err);
+      setError(`Erro ao buscar produto: ${err.message || "Tente novamente"}`);
     } finally {
       setLoading(false);
     }
@@ -311,34 +221,10 @@ const ProductDetail = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
           </Button>
-          <Button
-            onClick={() => {
-              setLoading(true);
-              const fetchProduct = async () => {
-                try {
-                  const { data, error } = await supabase
-                    .from("products")
-                    .select("*")
-                    .eq("id", id)
-                    .single();
-                  if (error) throw error;
-                  if (data) {
-                    setProduct({ ...product, ...data });
-                    setEditedProduct({ ...product, ...data });
-                  }
-                } catch (error) {
-                  console.error("Erro ao atualizar produto:", error);
-                } finally {
-                  setLoading(false);
-                }
-              };
-              fetchProduct();
-            }}
-            variant="outline"
-          >
+          <Button onClick={() => fetchProductData()} variant="outline">
             Atualizar Dados
           </Button>
-          <h1 className="text-2xl font-bold">Detalhes do Produto</h1>
+          <h1 className="text-2xl font-bold ml-4">Detalhes do Produto</h1>
         </div>
         <div className="flex space-x-2">
           <Button
@@ -437,7 +323,9 @@ const ProductDetail = () => {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   Cadastrado em:{" "}
-                  {new Date(product.createdAt).toLocaleDateString("pt-BR")}
+                  {new Date(
+                    product.created_at || product.createdAt || "",
+                  ).toLocaleDateString("pt-BR")}
                 </p>
               </div>
             </div>
@@ -466,23 +354,17 @@ const ProductDetail = () => {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="type">Tipo</Label>
-                      <Select
+                      <Input
+                        id="type"
                         value={editedProduct?.type || ""}
-                        onValueChange={(value) =>
-                          setEditedProduct({ ...editedProduct, type: value })
+                        onChange={(e) =>
+                          setEditedProduct({
+                            ...editedProduct,
+                            type: e.target.value,
+                          })
                         }
-                      >
-                        <SelectTrigger id="type">
-                          <SelectValue placeholder="Selecione o tipo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="alimento">Alimento</SelectItem>
-                          <SelectItem value="bebida">Bebida</SelectItem>
-                          <SelectItem value="cosmético">Cosmético</SelectItem>
-                          <SelectItem value="artesanato">Artesanato</SelectItem>
-                          <SelectItem value="outro">Outro</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        placeholder="Ex: alimento, bebida, cosmético"
+                      />
                     </div>
                   </div>
 
