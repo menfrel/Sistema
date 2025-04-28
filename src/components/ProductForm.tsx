@@ -102,7 +102,7 @@ const ProductForm = () => {
         ? data.seals.split(",").map((seal) => seal.trim())
         : [];
 
-      const { data: productData, error: productError } = await supabase
+      let { data: productData, error: productError } = await supabase
         .from("products")
         .insert([
           {
